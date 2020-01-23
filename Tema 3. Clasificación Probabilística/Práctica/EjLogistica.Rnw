@@ -1,0 +1,166 @@
+\documentclass[12pt, spanish]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amssymb, amsmath, amsbsy} % simbolitos
+
+%Formato de la hoja
+\textwidth 18cm \textheight 24cm \oddsidemargin
+-0.5cm \evensidemargin -1cm \topmargin -2cm 
+
+\title{Tema 3. Miner\'ia Estad\'istica de datos. Regresi\'on log\'{\i}stica}
+\author{Beatriz Coronado Sanz}
+
+\begin{document}
+\maketitle
+
+\SweaveOpts{concordance=TRUE,echo=FALSE}
+
+\section{Ejemplo de incendios}
+
+<<>>=
+rm(list = ls())
+@
+
+Vamos a realizar diferentes modelos de regresi\'on log\'istica sobre el fichero \textit{incendios.csv}, y usaremos el contraste fundamental de hip\'otesis con $\alpha=0.05$ para determinar el ajuste de los modelos. Despu\'es realizaremos una predicci\'on para un municipio ficticio y calcularemos las odds ratio de las variables del modelo.\\
+
+Lo primero que hacemos es leer los datos del fichero. Los 6 primeros datos son:
+
+<<>>=
+datos<-read.csv("incendios.csv", header=T, sep=";")
+head(datos)
+@
+
+Observamos que tenemos 7 variables diferentes. La variable \textit{Y} indica la alta/baja incidencia al fuego en un determinado municipio. Queremos encontrar una asociaci\'on entre el valor de esta variable y el resto.\\
+
+Veamos un resumen descriptivo de las variables incluidas en el fichero:
+<<>>=
+summary(datos) 
+@
+
+Lo primero que queremos hacer es indicar que las variables \textit{Y} y \textit{prestur} son dicot\'omicas, es decir, que solo admiten los valores 1 o 0. Mostramos a continuaci\'n el n\'umero de elementos para cada uno de los valores de la variable \textit{Y}:
+
+<<>>=
+datos$Y=as.factor(datos$Y)
+datos$prestur=as.factor(datos$prestur)
+summary(datos$Y)
+@
+
+a) Ajuste de un modelo de regresi\'on log\'{\i}stica m\'ultiple para relacionar la variable \textit{Y} con el resto de variables.
+
+$$\ln \left(\frac{\pi(\underline{x})}{1-\pi(\underline{x})}\right)= 
+\beta_0+\beta_1X_1+\ldots +\beta_p X_p$$
+
+En \textit{R} obtenemos:
+<<>>=
+Yobj.rl1=glm(Y~.,data=datos,family=binomial)
+summary(Yobj.rl1)
+@
+
+b) Justificar si el modelo ajustado es adecuado bas\'andose en el contraste fundamental de hip\'otesis.\\
+
+El modelo es adecuado porque 4 de 6 variables son aceptadas en el modelo y se rechaza para ellas la hip\'otesis nula. Por tanto, se rechaza la hip\'otesis nula para el modelo en general.\\
+
+c) Interpretacion de los resultados obtenidos en los constrastes individuales de los coeficientes y propuesta de modelo final.\\
+
+Observamos que para las variables \textit{maquin\_d}, \textit{prestur1}, \textit{gan\_for} y {roadmu\_d} se rechaza la hip\'otesis nula puesto que tienen un valor menor que $\alpha=0.05$. Las otras dos variables: \textit{paro} y \textit{frag 7x7} no rechazan la hip\'otesis nula para un valor de $\alpha=0.05$, por lo que el modelo final ser\'ia aquel que se calcule sin contar con estas dos variables.\\
+
+El modelo sin considerar las variables \textit{paro} y \textit{frag 7x7} ser\'ia:
+
+<<>>=
+Yobj.rl2=glm(Y~maquin_d+gan_for+roadmu_d+prestur,data=datos,family=binomial)
+summary(Yobj.rl2)
+@
+
+d) Predicci\'on razonada de la probabilidad de fuego de un municipio con unos ciertos valores para las variables explicativas que se deben considerar en el estudio.\\
+
+Para nuestra predicci\'on crearemos un ejemplo donde las variables \textit{paro} y \textit{frag 7x7} son 0 para usar nuestro modelo final y, por tanto, no se tendr\'an en cuenta para predecir la variable \textit{Y}.\\
+
+El ejemplo considerado y su predicci\'on se muestran a continuaci\'on:
+
+<<>>=
+library(MASS)
+newDato=data.frame(maquin_d=500, gan_for=150, roadmu_d=100 ,prestur=as.factor(0))
+newDato
+predFuego= predict(Yobj.rl2 , newdata=newDato,type="response", se =T)
+predFuego$fit
+@
+
+Observamos que el valor del municipio ficticio es cercano a 1 ($0.796$) y, por lo tanto, tiene alta incidencia de fuego.\\
+
+e) C\'alculo de un intervalo de confianza al $95\%$ para las odds ratio de las variables significativas del modelo. Interpretaci\'on de los resultados obtenidos para las variables \textit{gan\_for} y \textit{prestur}.\\
+
+Las odds ratio y sus intervalos de confianza de las variables significativas del modelo son:
+<<>>=
+t=cbind(exp(Yobj.rl2$coefficients), exp(confint(Yobj.rl2)))
+colnames(t)=c("Odds ratio", "Lim Inf (2.5%)","Lim Sup (97.5%)")
+t
+@
+
+El odd ratio de \textit{gan\_for} es $0.99$, lo que quiere decir que por cada $1\%$ m\'as de densidad de ganado en el municipio el riesgo de fuego desciende un $1\%$.\\
+
+El odd ratio de \textit{prestur} es $6.62$, lo que quiere decir que en un municipio con presi\'on tur\'istica el riesgo es $6,62$ veces mayor que en uno que no tiene presi\'on tur\'istica.
+
+\section{Ejemplo de admisiones}
+
+Vamos a realizar un modelo de regresi\'on log\'istica sobre el fichero \textit{binary.txt}, que recoge los datos de admisi\'on de ciertos alumnos de EEUU en estudios de postgrado. Comprobaremos el ajuste del modelo para $\alpha=0.05$, luego predeciremos la probabilidad de que un alumno sea admitido seg\'un unos datos concretos y, por \'ultimo, calcularemos las odds ratio de las variables del modelo.\\
+
+Lo primero que hacemos es leer los datos del fichero. Los primeros 6 datos son:
+
+<<>>=
+misdatos<-read.table("binary.txt",sep="\t",dec=".")
+head(misdatos)
+@
+
+Observamos que tenemos 4 variables diferentes. La variable \textit{admit} indica si un alumno ha sido admitido o no. Queremos encontrar una asociaci\'on entre el valor de esta variable y el resto.\\
+
+Veamos un resumen descriptivo de las variables incluidas en el fichero:
+
+<<>>=
+summary(misdatos)
+@
+
+Lo primero que queremos hacer es indicar que la variable \textit{admit} es dicot\'omica. A continuaci\'on, mostramos el n\'umero de elementos para cada uno de los valores de la variable \textit{admit}:
+
+<<>>=
+misdatos$admit=as.factor(misdatos$admit)
+summary(misdatos$admit)
+@
+
+a) Ajuste de un modelo de regresi\'on log\'istica m\'ultiple para relacionar la variable \textit{admit} con el resto de variables. Discusi\'on sobre si el modelo es adecuado o no.
+
+<<>>=
+Yobj.rl3=glm(admit~.,data=misdatos,family=binomial)
+summary(Yobj.rl3)
+@
+
+Observamos que todas las variables rechazan la hip\'otesis nula para $\alpha=0.05$, por lo que nuesro modelo es adecuado.\\
+
+b) Predicci\'on de la probabilidad de que sea admitido un alumno cuya puntuaci\'on en el ex\'amen de ingreso fue 525, su media en el grado es $3.1$ y estudi\'o en una instituci\'on cuyo rango es 3.\\
+
+Creando una variable para el alumno que nos preguntan y utilizando la funci\'on \textit{predict} llegamos a que la probabilidad de que sea admitido este alumno es:
+
+<<>>=
+newAlumn=data.frame(gre=525,gpa=3.1,rank=3)
+predAlumn= predict(Yobj.rl3 , newdata=newAlumn,type="response", se =T)
+predAlumn$fit
+@
+
+Lo que quiere decir que, con un $17\%$, el alumno no ser\'a admitido en esa universidad.\\
+
+c) C\'alculo de las odds ratios de las variables significativas del modelo e interpretaci\'on de los resultados obtenidos.\\
+
+Las odds ratio y sus intervalos de confianza de las variables del modelo son:
+
+<<>>=
+t=cbind(exp(Yobj.rl3$coefficients), exp(confint(Yobj.rl3)))
+colnames(t)=c("Odds ratio", "Lim Inf (2.5%)","Lim Sup (97.5%)")
+t
+@
+
+Observamos que la odd ratio de la variables \textit{gre} es pr\'acticamente 1, lo que quiere decir que el que tengas un punto m\'as en el ex\'amen no es significativo para que te admitan en la universidad.\\
+
+La odd ratio de la variable \textit{gpa} es $2.17$, lo que quiere decir que si tienes un punto m\'as de media es $2,17$ veces m\'as probable que te admitan en la universidad.\\
+
+Por \'ultimo, la odd ratio de la variable \textit{rank} es $0.57$, lo que quiere decir que si la instituci\'on tiene un punto m\'as de prestigio, es un $57\%$ menos probable que te admitan en la universidad.
+
+\end{document}

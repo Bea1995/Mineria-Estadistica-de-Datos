@@ -1,0 +1,220 @@
+\documentclass[12pt, spanish]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{amssymb, amsmath, amsbsy} % simbolitos
+
+%Formato de la hoja
+\textwidth 18cm \textheight 24cm \oddsidemargin
+-0.5cm \evensidemargin -1cm \topmargin -2cm 
+
+\title{Tema 10. Miner\'ia Estad\'istica de datos. An\'alisis de datos bioinform\'aticos}
+\author{Beatriz Coronado Sanz}
+
+\begin{document}
+\maketitle
+
+\SweaveOpts{concordance=TRUE,echo=FALSE}
+
+\section{Introducci\'on}
+Vamos a estudiar un conjunto de datos RNA-seq reales utilizando el modelo de regresi\'on binomial negativa. Para ello usaremos el proyecto de software libre Bioconductor y los paquetes. \textit{DESeq} y \textit{DESeq2}\bigskip
+
+Tras procesar los datos, realizaremos contrastes de hip\'otesis para detectar determinados genes y mostraremos unas gr\'aficas con los resultados obtenidos.
+
+\section{Datos del trabajo}
+Usaremos datos procedentes de un experimento sobre el cultivo de c\'elulas de la mosca \textit{Drosophila melanogaster}.\bigskip
+
+Tras cargar todas las librer\'ias necesarias, mostramos la cabecera de la tabla de conteos de nuestros datos. En esta tabla las filas corresponden a los genes y las columnas a las muestras o individuos.
+
+<<>>=
+## Instalación de librerías.
+source("http://bioconductor.org/biocLite.R")
+#biocLite()
+#biocLite("Biobase")
+#biocLite("DESeq")
+#biocLite("DESeq2")
+#biocLite("pasilla")
+#biocLite("GenomicRanges")
+
+## Carga de librerías.
+library(Biobase)
+library(DESeq)
+library(DESeq2)
+
+## Cargamos los datos.
+library("pasilla")
+
+#Nos quedamos con los datos pertenecientes a los genes.
+data("pasillaGenes")
+#head(pasillaGenes)
+
+#Tabla de conteos. Vemos la cabecera de la tabla
+countData <- counts(pasillaGenes)
+head(countData)
+
+@
+
+Sus dimensiones son:
+<<>>=
+dim(countData)
+@
+
+Es necesario tener los datos en un formato adecuado para DESeqDataSet. Para realizar esto obtenemos la informaci\'on de las columnas de la matriz de conteos.
+
+<<>>=
+#Datos en formato adecuado DESeqDataSet
+#para ello debemos tener la información de las columnas
+colData <- pData(pasillaGenes)[, c("condition", "type")]
+colData
+@
+
+Tenemos dos factores para cada individuo: la condici\'on, que diferencia entre individuos no tratados e individuos tratados, y el tipo de secuenciaci\'on empleada, que puede ser ``single-read'' o  ``paired-end''.\bigskip
+
+Tras esto construimos un DESeqDataSet. Para realizar el estudio queremos tener en cuenta el factor \textit{condition}, para diferenciar entre individuos tratados e individuos no tratados. En nuestro ejemplo, tenemos 3 individuos tratados y 4 no tratados.\bigskip
+
+<<>>=
+#Podemos construir un DESeqDataSet 
+dds <- DESeqDataSetFromMatrix(countData=countData,
+                              colData=colData,
+                              design=~condition)
+colData(dds)$condition <- factor(colData(dds)$condition, 
+                                 levels=c("untreated", "treated"))
+@
+
+Aplicando la funci\'on \textit{factor} a la columna que nos interesa en \textit{colData}, asignamos un orden a los distintos niveles. De esta forma los individuos no tratados se consideran el nivel de control.
+
+\section{Estudios estad\'istico y an\'alisis diferencial}
+El an\'alisis de expresi\'on diferencial en DESeq2 usa un modelo lineal generalizado de la forma $K_{ij}\sim NB(\mu_{ij},\alpha_i)$ con $\mu_{ij}=s_j q_{ij}>0, \alpha_{i}>0$ donde $K_{ij}$ es el n\'umero de conteos del gen $i$ en la muestra $j$. Se sigue una distribuci\'on binomial negativa con una media ajustada $\mu_{ij}$ (producto de un factor de tama\~no espec\'ificico para cada muestra $s_j$ y un par\'ametro proporcional a la concentraci\'on de los fragmentos real esperada en la muestra $j$), y una dispersi\'on espec\'ifica para cada gen, $\alpha_i$.\bigskip
+
+Como estamos interesados en encontrar aquellos genes que presenten diferentes niveles de expresi\'on seg\'un se trate de un individuo control o un individuo tratado, el contraste que realizamos es:
+
+$$\left \{ \begin{matrix} H_0:\log_2{\frac{\mu_{iA}}{\mu_{iB}}}=0
+\\ H_1:\log_2{\frac{\mu_{iA}}{\mu_{iB}}}\ne 0\end{matrix}\right.  $$
+
+donde $\mu_{iA}$ es la media de conteos del gen $i$ en el grupo A (individuos no tratados) y $\mu_{iB}$ la media de conteos del mismo gen pero en el grupo B (individuos tratados). A $\frac{\mu_{iA}}{\mu_{iB}}$ se le denomina \textit{fold-change}.\bigskip
+
+Debemos realizar este contraste para cada uno de los genes de forma independiente.\bigskip
+
+Realizamos el an\'alisis de expresi\'on diferencial para nuestros datos. Se ordenan los resultados por orden creciente del $p$-valor ajustado. De esta forma, los primeros genes que aparecen en la tabla son los que muestran una mayor diferencia en los niveles de expresi\'on entre los dos grupos.
+
+<<>>=
+#Análisis de expresión diferencial
+analisisdds <- DESeq(dds)
+respordefecto <- results(analisisdds)
+res <- respordefecto[order(respordefecto$padj),]
+head(res)
+@
+
+Las interpretaci\'on de las columnas de la tabla de resultados obtenida es la siguiente:
+
+\begin{itemize}
+  \item baseMean: media de los conteos normalizados.
+  \item lo2FoldChange: un valor nulo indica que el gen en cuesti\'on presenta los mismos niveles de expresi\'on para ambos grupos. Un valor no nulo indica que el gen se expresa de forma diferente en cada grupo y, seg\'un el signo de dicho valor, se ve si presenta un mayor nivel de expresi\'on en el grupo de individuos no tratados o en el grupo de los tratados.
+  \item $p$-value: $p$-valor para el contraste descrito
+  \item padj: $p$-valor ajustado. Al realizar el constraste para cada uno de los genes podemos encontrarnos con el problema de comparaciones m\'ultiples, es decir, al realizar un gran n\'umero de contrastes, se produce un aumento de la probabilidad de obtener falsos positivos y cometer un error de tipo I (rechazar la hip\'otesis nula, siendo verdadera). El programa ajusta los $p$-valores por el procedimiento de Benjamin-Hochberg.
+\end{itemize}
+
+Nos interesa conocer todos los genes diferencialmente expresados, es decir, aquellos genes para los que se ha rechazado la hip\'otesis nula para un nivel de significaci\'on $\alpha=0,01$.\bigskip
+
+En la siguiente gr\'afica vemos los valores de \textit{log2FoldChange} sobre la media de conteos. Los puntos rojos pertenecen a aquellos genes cuyo constraste ha rechazado la hip\'otesis nula (genes diferencialmente expresados). En este caso hay $6675$ genes de este tipo.
+
+\begin{figure}[H]
+\centering
+<<fig1, fig=TRUE, echo=FALSE>>=
+#Tabla con los genes DE
+resDE <- as.data.frame(res)
+difexpDE <- resDE[resDE$padj<0.01,]
+#Grafico: MA-Plot
+plotMA(res, ylim=c(-2,2), main="Gr\'afico MA")
+@
+\end{figure}
+
+Hasta ahora solo hemos usado el factor condici\'on, pero tambi\'en podemos crear el modelo teniendo en cuenta el tipo de secuenciaciaci\'on. El modelo que obtenemos es:
+
+<<>>=
+#Vamos a tener el cuenta el tipo de secuenciación
+design(dds)<-formula(~ type + condition)
+dds<-DESeq(dds)
+res<-results(dds)
+head(res)
+@
+
+\section{Evaluaci\'on de la calidad de los datos}
+Queremos encontrar genes diferencialmente expresados y tenemos que ver muestras cuyo tratamiento experimental ha sufrido alguna anomal\'ia que puede transformar los datos obtenidos en perjudiciales. Para ver esto realizamos un control de calidad.
+
+\subsection{Mapa de calor de la tabla de conteos}
+Se puede crear un mapa de calor a partir de la tabla de conteos, los que nos proporciona informaci\'on sobre los genes que muestran un mayor nivel de expresi\'on en el experimento. El mapa de calor de los conteos brutos es:
+
+\begin{figure}[H]
+\centering
+<<fig2, fig=TRUE, echo=FALSE>>=
+#Color key e histograma
+library("RColorBrewer")
+library("gplots")
+select<-order(rowMeans(counts(dds,normalized=TRUE)),
+              decreasing=TRUE)[1:30]
+hmcol<-colorRampPalette(brewer.pal(9,"GnBu"))(100)
+heatmap.2(counts(dds,normalized=TRUE)[select,],col=hmcol,
+          Rowv=FALSE,Colv=FALSE,scale="none",
+          dendogram="none", trace="none", margin=c(10,6))
+@
+\end{figure}
+
+Vemos los conteos de los 30 genes con mayor nivel de expresi\'on. Las filas representan a los genes y las columnas a los individuos. A mayor valor de conteo, m\'as intensidad de color.\bigskip
+
+En el an\'alisis diferencial trabajamos con los conteos brutos y usamos distribuciones discretas, pero para an\'alisis posteriores puede ser \'util trabajar con una transformaci\'on de los datos. El mapa de calor para los datos transformados mediante la funci\'on \textit{rlogTransformation} es:
+
+\begin{figure}[H]
+\centering
+<<fig3, fig=TRUE, echo=FALSE>>=
+#Transformacion de los datos
+rld<-rlogTransformation(dds,blind=TRUE)
+
+#Mapa de calor de los datos transformados
+heatmap.2(assay(rld)[select,],col=hmcol,
+          Rowv=FALSE,Colv=FALSE,scale="none",
+          dendrogram="none",trace="none",margin=c(10,6))
+@
+\end{figure}
+
+\subsection{Mapa de calor de las distancias entre muestras}
+Podemos realizar un an\'alisis de conglomerados (cluster) sobre los datos transformados. Para ello tenemos que aplicar la funci\'on \textit{dist} a la traspuesta de la matriz de conteos transformados para obtener las distancias eucl\'ideas entre las muestras. La matriz de distancias resultante es:
+
+<<>>=
+#Mapa de calor de las distancias entre muestras
+#Distancias
+distsRL<-dist(t(assay(rld)))
+#Matriz de distancias
+mat<-as.matrix(distsRL)
+mat
+@
+
+A partir de la matriz de distancias podemos crear el mapa de calor. Los resultados obtenidos en dicho mapa deben coincidir con los que observamos en la matriz de distancias: los individuos m\'as alejados en la matriz de distancias deben ser los m\'as alejados en el mapa de calor. Los mismo ocurre con los individuos m\'as cercanos. El mapa de calor resultante es:
+
+\begin{figure}[H]
+\centering
+<<fig4, fig=TRUE, echo=FALSE>>=
+#Mapa de calor
+rownames(mat)<-colnames(mat)<-with(colData(dds),
+                    paste(condition,type,sep=":"))
+heatmap.2(mat,trace="none",col=rev(hmcol),margin=c(13,13))
+
+@
+\end{figure}
+
+Los colores m\'as fuertes indican mayor similitud entre los datos. Podemos observar tambi\'en los valores de las ditancias y cu\'antos pares de muestras presentan ese valor.
+
+\subsection{Componentes principales de las muestras}
+Estudiar las componentes principales de las muestras sirve para ver el efecto toal de las covariables, as\'i como la posible existencia de efectos lotes. En la siguiente gr\'afica se representan la primera y segunda componente principal de nuestros datos:
+
+\begin{figure}[H]
+\centering
+<<fig5, fig=TRUE, echo=FALSE>>=
+#Componentes principales de las muestras
+print(plotPCA(rld,intgroup=c("condition","type")))
+
+@
+\end{figure}
+
+\end{document}
